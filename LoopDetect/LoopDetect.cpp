@@ -94,12 +94,7 @@ void CallStack::newFrame() {
         std::cerr << "Error pushing frame. \n";
         exit(-1);
     }
-    // Debug
-    // if (last_call_retaddr == 0xb7ff0e8c) {
-        // enable_dbg_print = true;
-        // std::cerr << "New frame with retaddr: 0x" << std::hex << last_call_retaddr << std::endl;
-    // }
-    // End Debug
+    
     frame->retaddr = last_call_retaddr;
     callStack.push_back(frame);
 }
@@ -107,17 +102,6 @@ void CallStack::newFrame() {
 void CallStack::adjustCallStack(ADDRINT bbhead) {
     if (returned) { // Last BB has return
         StackFrame *frame;
-        // Debug
-        // if (enable_dbg_print) {
-        //     frame = getTopFrame();
-        //     std::cerr << "Return to 0x" << std::hex << bbhead << " Current Frame: " << std::endl;
-        //     // if (bbhead == 0xb7ff2532) {
-        //         // for (int j = callStack.size() - 1; j >=0; j--) {
-        //         //     std::cerr << std::hex << "    Frame with Ret address: 0x"  << callStack[j]->retaddr << std::endl;
-        //         // }
-        //     // }
-        // }
-        // End Debug
 
         /* First check if the return destination is in our stack... */
         bool ret_dest_in_stack = false;
@@ -148,23 +132,11 @@ void CallStack::adjustCallStack(ADDRINT bbhead) {
 
     // Setup
     if (get_bbinfo(bbhead)->contains_ret) {
-        // Debug
-        // std::cerr << "Meet BB with ret at 0x" << std::hex << bbhead << std::endl;
-        // for (auto inst_dis_it : basicBlocks[bbhead]->inst_disassem) {
-        //     std::cerr << "    0x" << std::hex << inst_dis_it.first << ": " << inst_dis_it.second << std::endl;
-        // }
-        // End Debug
         returned = true;
     } else {
         returned = false;
     }
     if (get_bbinfo(bbhead)->contains_call) {
-        // Debug
-        // std::cerr << "Meet BB with call at 0x" << std::hex << bbhead << ". Should ret to " << get_bbinfo(bbhead)->retaddr << std::endl;
-        // for (auto inst_dis_it : basicBlocks[bbhead]->inst_disassem) {
-        //     std::cerr << "    0x" << std::hex << inst_dis_it.first << ": " << inst_dis_it.second << std::endl;
-        // }
-        // End Debug
         called = true;
         last_call_retaddr = get_bbinfo(bbhead)->retaddr;
     } else {
@@ -182,25 +154,6 @@ StackFrame *CallStack::getTopFrame() {
 
 BBPathInfo *CallStack::isInPath(ADDRINT bbhead) {
     StackFrame *frame = getTopFrame();
-    /* Debug */
-    // if (bbhead < 0x90000000){
-    //     std::cerr << "Checking if 0x" << std::hex << bbhead << " is in the path." << std::endl;
-    // }
-    // if (bbhead == 0x8048703 || bbhead == 0x8048722) {
-    //     std::cerr << "Current Number of frames: " << callStack.size() << endl;
-    //     for (int i = callStack.size() - 1; i >=0; i--) {
-    //         StackFrame *dbg_frame = callStack[i];
-    //         std::cerr << "Current path of frame " << " when checking 0x" << bbhead << ": " << endl;
-    //         for (int j = dbg_frame->path.size() - 1; j >=0; j--) {
-    //             ADDRINT dbg_head = dbg_frame->path[j]->head;
-    //             ADDRINT dbg_tail = basicBlocks[dbg_frame->path[j]->head]->instructions.back(); 
-    //             std::cerr << "    Head: 0x" << std::hex << dbg_head << " Tail: 0x" << dbg_tail << std::endl;
-    //         }
-    //     }
-        
-        
-    // }
-    /* End Debug */
     
     // Search from back
     for (int i = frame->path.size() - 1; i >=0; i--) {
@@ -211,11 +164,6 @@ BBPathInfo *CallStack::isInPath(ADDRINT bbhead) {
             // Get the address of the last instruction
             ADDRINT tail = basicBlocks[frame->path[i]->head]->instructions.back(); 
             if (tail && tail > bbhead) {
-                /* Debug */
-                // if (bbhead < 0x90000000){
-                //     std::cerr << "Return to middle of BB 0x" << std::hex << bbhead << std::endl;
-                // }
-                /* End Debug */
                 return frame->path[i];
             }
         }
@@ -304,40 +252,12 @@ void processBB(ADDRINT bbhead) {
         return;
     }
     BBPathInfo *bpi = stack.isInPath(bbhead);
-    // std::cerr << "BPI: " << std::hex << bpi << '\n';
 
-    // std::cerr << "DBG: Check loop Detect" << '\n';
     if (bpi) {
-        /* Debug */
-        // if (bbhead < 0x90000000) {
-            // std::cerr << "loopDetected at BB 0x" << std::hex << bbhead << '\n';
-            // for (auto inst_dis_it : basicBlocks[bbhead]->inst_disassem) {
-            //     std::cerr << "    0x" << std::hex << inst_dis_it.first << ": " << inst_dis_it.second << std::endl;
-            // }
-        // }
-        /* End Debug */
         processLoop(bpi);
     } else {
-        // std::cerr << "NO LOOP" << '\n';
         stack.newBB(bbhead);
     }
-
-    /* Debug */
-    // if (bbhead < 0x90000000){
-    //     // std::cerr << "Encountering BB at 0x" << std::hex << bbhead << std::endl;
-    //     std::cerr << "Current Number of frames: " << stack.callStack.size() << endl;
-    //     for (int i = stack.callStack.size() - 1; i >=0; i--) {
-    //         StackFrame *dbg_frame = stack.callStack[i];
-    //         std::cerr << "Current path of frame " << " when checking 0x" << bbhead << ": " << endl;
-    //         for (int j = dbg_frame->path.size() - 1; j >=0; j--) {
-    //             ADDRINT dbg_head = dbg_frame->path[j]->head;
-    //             ADDRINT dbg_tail = basicBlocks[dbg_frame->path[j]->head]->instructions.back(); 
-    //             std::cerr << "    Head: 0x" << std::hex << dbg_head << " Tail: 0x" << dbg_tail << std::endl;
-    //         }
-    //     }
-    //     std::cerr << endl;
-    // }
-    /* End Debug */
 }
 
 
@@ -352,7 +272,6 @@ void LoopDetect(TRACE trace, VOID *v) {
         // Prepare instruction info in the basic block
         INS ins;
         for (ins = BBL_InsHead(bbl); ; ins = INS_Next(ins)) {
-            // BBInsts[BBL_Address(bbl)].push_back(INS_Address(ins));
             bbinfo->instructions.push_back(INS_Address(ins));
             /* Debug */
             // bbinfo->inst_disassem[INS_Address(ins)] = INS_Disassemble(ins);
@@ -393,7 +312,7 @@ void WrapUp() {
     
     std::map<ADDRINT, ADDRINT> address2loopid;
     for (auto loop : loops) {
-        
+
         cout<<"Loop Head Basic Block: 0x"<< std::hex <<loop.second->head<<endl;
         
         for (auto I : loop.second->associatedInsts) {
