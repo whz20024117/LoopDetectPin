@@ -1,5 +1,6 @@
 /.vscode
-/LoopDetect
+obj-intel64
+obj-ia32
 /old
 /pin
 /test
