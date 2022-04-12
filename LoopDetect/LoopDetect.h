@@ -65,7 +65,7 @@ public:
     void popBB();
 
     void pushBB(BBPathInfo *bpi);
-    void printCallStack();
+    void printCallStack(bool printBB);
 
     void newFrame();
     void newBB(ADDRINT head);

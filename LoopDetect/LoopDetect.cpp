@@ -179,12 +179,21 @@ void CallStack::newBB(ADDRINT head) {
     frame->path.push_back(bpi);
 }
 
-void CallStack::printCallStack() {
+void CallStack::printCallStack(bool printBB=false) {
     std::cerr << "Printing current Call Stack: " << std::endl;
     for (int j = callStack.size() - 1; j >=0; j--) {
         ADDRINT retaddr = callStack[j]->retaddr;
         ADDRINT frameaddr = callStack[j]->path[0]->head;
         std::cerr << std::hex << "    Frame at 0x" << frameaddr << " with Ret address: 0x"  << retaddr << std::endl;
+        if (printBB) {
+            if (callStack[j]->path.size() == 0) {
+                std::cerr << "        No BB in this frame." << std::endl;
+            }
+            for (int i = callStack[j]->path.size() - 1; i >=0; i--) {
+                BBInfo *cur_bbinfo = get_bbinfo(callStack[j]->path[i]->head);
+                std::cerr << std::hex << "        BB Head: 0x" << cur_bbinfo->head << " BB Tail: 0x" << cur_bbinfo->instructions.back() << std::endl;
+            }
+        }
     }
 }
 
