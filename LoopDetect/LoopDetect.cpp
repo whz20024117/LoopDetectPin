@@ -33,7 +33,7 @@ void StackFrame::popBB() {
         path.pop_back();
     } else {
         std::cerr << "No more BB to pop. \n";
-        exit(-1);
+        PIN_ExitProcess(1);
     }
 }
 
@@ -92,7 +92,7 @@ void CallStack::newFrame() {
     StackFrame *frame = new StackFrame();
     if (!frame) {
         std::cerr << "Error pushing frame. \n";
-        exit(-1);
+        PIN_ExitProcess(1);
     }
     
     frame->retaddr = last_call_retaddr;
