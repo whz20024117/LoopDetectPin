@@ -125,9 +125,9 @@ void CallStack::adjustCallStack(ADDRINT bbhead) {
     } else if (called) {
         if (last_call_retaddr == 0) {
             std::cerr << "Invalid last_call_retaddr!!!!!!!." << std::endl;
-            exit(-1);
+        } else {
+            newFrame();
         }
-        newFrame();
     }
 
     // Setup
