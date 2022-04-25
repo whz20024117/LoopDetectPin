@@ -1,5 +1,4 @@
 #include <functional>
-#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -23,13 +22,13 @@ class MyVector {
         if (n == capacity)
             return container;
 
-        T* new_containter = (T*) malloc(n * sizeof(T));
+        T* new_containter = new T[n];
         if (!new_containter) {
             fprintf(stderr, "MyVector resize error: Failure on memory allocation when resize to %lu.\n", n);
             return nullptr;
         }
         memcpy(new_containter, container, _size * sizeof(T));
-        free(container);
+        delete[] container;
         container = new_containter;
         capacity = n;
 
@@ -40,11 +39,11 @@ public:
     MyVector() {
         _size = 0;
         capacity = 20;
-        container = (T*) malloc(20 * sizeof(T));
+        container = (T*) new T[capacity];
     }
 
     ~MyVector() {
-        free(container);
+        delete[] container;
     }
 
     void push_back(const T& val) {
@@ -123,14 +122,14 @@ class MySet {
         __BucketListItem<KeyT, KeyT> *next_node;
         while (bucket_node->next) {
             next_node = bucket_node->next;
-            free(bucket_node);
+            delete bucket_node;
             bucket_node = next_node;
         }
-        free(bucket_node);
+        delete bucket_node;
     }
 
     int insert_to_bucket(KeyT key) {
-        __BucketListItem<KeyT, KeyT> *item = (__BucketListItem<KeyT, KeyT> *) malloc(sizeof(__BucketListItem<KeyT, KeyT>));
+        __BucketListItem<KeyT, KeyT> *item = new __BucketListItem<KeyT, KeyT>;
         if (!item) {
             fprintf(stderr, "MySet insertion error: cannot allocate memory for new item.\n");
             return -1;
@@ -149,14 +148,14 @@ class MySet {
         while (bucket_node->next) {
             if (bucket_node->key == key) {
                 // Key == val
-                free(item);
+                delete item;
                 return 0;
             }
             bucket_node = bucket_node->next;
         }
         if (bucket_node->key == key) {
             // Key == val
-            free(item);
+            delete item;
             return 0;
         }
             
@@ -173,7 +172,7 @@ class MySet {
         }
 
         __BucketListItem<KeyT, KeyT> **new_buckets = \
-            (__BucketListItem<KeyT, KeyT> **) malloc(new_n_buckets * sizeof(__BucketListItem<KeyT, KeyT>*));
+            new __BucketListItem<KeyT, KeyT>*[new_n_buckets];
         if (!new_buckets) {
             fprintf(stderr, "MySet bucket enlarge error: memory allocation failed for new buckets with number %lu.\n", new_n_buckets);
             return nullptr;
@@ -211,7 +210,7 @@ class MySet {
                 free_bucket(tmp_bucket);
             }
         }
-        free(old_buckets);
+        delete[] old_buckets;
         return buckets;
 
     failed:
@@ -226,7 +225,7 @@ class MySet {
                 free_bucket(tmp_bucket);
             }
         }
-        free(new_buckets);
+        delete[] new_buckets;
         
         return nullptr;
     }
@@ -244,7 +243,7 @@ public:
     MySet() {
         _size = 0;
         n_buckets = __bucket_number_prime_list[0];
-        buckets = (__BucketListItem<KeyT, KeyT> **) malloc(n_buckets * sizeof(__BucketListItem<KeyT, KeyT>*));
+        buckets = new __BucketListItem<KeyT, KeyT>*[n_buckets];
         if (!buckets) {
             fprintf(stderr, "MySet bucket initial error: memory allocation failed for buckets.\n");
             exit(-1);
@@ -259,7 +258,7 @@ public:
             if (buckets[i])
                 free_bucket(buckets[i]);
         }
-        free(buckets);
+        delete[] buckets;
     }
 
     void insert(KeyT key) {
@@ -321,14 +320,14 @@ class MyMap {
         __BucketListItem<KeyT, ValT> *next_node;
         while (bucket_node->next) {
             next_node = bucket_node->next;
-            free(bucket_node);
+            delete bucket_node;
             bucket_node = next_node;
         }
-        free(bucket_node);
+        delete bucket_node;
     }
 
     int insert_to_bucket(KeyT key, ValT val) {
-        __BucketListItem<KeyT, ValT> *item = (__BucketListItem<KeyT, ValT> *) malloc(sizeof(__BucketListItem<KeyT, ValT>));
+        __BucketListItem<KeyT, ValT> *item = new __BucketListItem<KeyT, ValT>;
         if (!item) {
             fprintf(stderr, "MySet insertion error: cannot allocate memory for new item.\n");
             return -1;
@@ -346,13 +345,13 @@ class MyMap {
         __BucketListItem<KeyT, ValT> *bucket_node = buckets[bucket_index];
         while (bucket_node->next) {
             if (bucket_node->key == key) {
-                free(item);
+                delete item;
                 return 0;
             }
             bucket_node = bucket_node->next;
         }
         if (bucket_node->key == key) {
-            free(item);
+            delete item;
             return 0;
         }
             
@@ -369,7 +368,7 @@ class MyMap {
         }
 
         __BucketListItem<KeyT, ValT> **new_buckets = \
-            (__BucketListItem<KeyT, ValT> **) malloc(new_n_buckets * sizeof(__BucketListItem<KeyT, ValT>*));
+            new __BucketListItem<KeyT, ValT>*[new_n_buckets];
         if (!new_buckets) {
             fprintf(stderr, "MySet bucket enlarge error: memory allocation failed for new buckets with number %lu.\n", new_n_buckets);
             return nullptr;
@@ -407,7 +406,7 @@ class MyMap {
                 free_bucket(tmp_bucket);
             }
         }
-        free(old_buckets);
+        delete[] old_buckets;
         return buckets;
 
     failed:
@@ -422,7 +421,7 @@ class MyMap {
                 free_bucket(tmp_bucket);
             }
         }
-        free(new_buckets);
+        delete[] new_buckets;
         
         return nullptr;
     }
@@ -440,7 +439,7 @@ public:
     MyMap() {
         _size = 0;
         n_buckets = __bucket_number_prime_list[0];
-        buckets = (__BucketListItem<KeyT, ValT> **) malloc(n_buckets * sizeof(__BucketListItem<KeyT, ValT>*));
+        buckets = new __BucketListItem<KeyT, ValT>*[n_buckets];
         if (!buckets) {
             fprintf(stderr, "MySet bucket initial error: memory allocation failed for buckets.\n");
             exit(-1);
@@ -455,7 +454,7 @@ public:
             if (buckets[i])
                 free_bucket(buckets[i]);
         }
-        free(buckets);
+        delete[] buckets;
     }
 
     void insert(KeyT key, ValT val) {
