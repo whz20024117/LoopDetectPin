@@ -315,6 +315,21 @@ public:
         return ret;
     }
 
+    bool containsKey(KeyT key) {
+        uint64_t index = get_index(key);
+        __BucketListItem<KeyT, KeyT> *bucket_node = buckets[index];
+        if (!bucket_node) {
+            return false;
+        }
+        while (bucket_node) {
+            if (bucket_node->key == key) {
+                return true;
+            }
+            bucket_node = bucket_node->next;
+        }
+        return false
+    }
+
 };
 
 
@@ -343,7 +358,7 @@ class MyMap {
     int insert_to_bucket(KeyT key, ValT val) {
         __BucketListItem<KeyT, ValT> *item = new __BucketListItem<KeyT, ValT>;
         if (!item) {
-            fprintf(stderr, "MySet insertion error: cannot allocate memory for new item.\n");
+            fprintf(stderr, "MyMap insertion error: cannot allocate memory for new item.\n");
             return -1;
         }
         item->key = key;
@@ -377,14 +392,14 @@ class MyMap {
         // Return nullptr if failed. Return new buckets pointer on succeed.
 
         if (new_n_buckets <= n_buckets) {
-            fprintf(stderr, "MySet bucket enlarge error: desired size is smaller than current size.\n");
+            fprintf(stderr, "MyMap bucket enlarge error: desired size is smaller than current size.\n");
             return nullptr;
         }
 
         __BucketListItem<KeyT, ValT> **new_buckets = \
             new __BucketListItem<KeyT, ValT>*[new_n_buckets];
         if (!new_buckets) {
-            fprintf(stderr, "MySet bucket enlarge error: memory allocation failed for new buckets with number %lu.\n", new_n_buckets);
+            fprintf(stderr, "MyMap bucket enlarge error: memory allocation failed for new buckets with number %lu.\n", new_n_buckets);
             return nullptr;
         }
 
@@ -455,7 +470,7 @@ public:
         n_buckets = __bucket_number_prime_list[0];
         buckets = new __BucketListItem<KeyT, ValT>*[n_buckets];
         if (!buckets) {
-            fprintf(stderr, "MySet bucket initial error: memory allocation failed for buckets.\n");
+            fprintf(stderr, "MyMap bucket initial error: memory allocation failed for buckets.\n");
             exit(-1);
         }
         for (size_t i=0; i < n_buckets; i++) {
@@ -484,7 +499,7 @@ public:
             while (new_n_bucket <= n_buckets) {
                 new_n_bucket = __bucket_number_prime_list[++idx];
                 if (idx == 28) {
-                    fprintf(stderr, "MySet insertion warning: cannot enlarge anymore.\n");
+                    fprintf(stderr, "MyMap insertion warning: cannot enlarge anymore.\n");
                     return;
                 }
             }
@@ -497,7 +512,7 @@ public:
         uint64_t index = get_index(key);
         __BucketListItem<KeyT, ValT> *bucket_node = buckets[index];
         if (!bucket_node) {
-            fprintf(stderr, "MySet access error: cannot find key.\n");
+            fprintf(stderr, "MyMap access error: cannot find key.\n");
             exit(-1);
         }
 
@@ -507,7 +522,7 @@ public:
             }
             bucket_node = bucket_node->next;
         }
-        fprintf(stderr, "MySet access error: cannot find key.\n");
+        fprintf(stderr, "MyMap access error: cannot find key.\n");
         exit(-1);
     }
 
@@ -523,6 +538,21 @@ public:
             }
         }
         return ret;
+    }
+
+    bool containsKey(KeyT key) {
+        uint64_t index = get_index(key);
+        __BucketListItem<KeyT, ValT> *bucket_node = buckets[index];
+        if (!bucket_node) {
+            return false;
+        }
+        while (bucket_node) {
+            if (bucket_node->key == key) {
+                return true;
+            }
+            bucket_node = bucket_node->next;
+        }
+        return false
     }
 
 };
