@@ -327,7 +327,7 @@ public:
             }
             bucket_node = bucket_node->next;
         }
-        return false
+        return false;
     }
 
 };
@@ -552,7 +552,7 @@ public:
             }
             bucket_node = bucket_node->next;
         }
-        return false
+        return false;
     }
 
 };
