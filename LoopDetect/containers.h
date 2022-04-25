@@ -107,145 +107,19 @@ public:
     __BucketListItem *next = nullptr;
 };
 
-template <class KeyT>
-class MySet {
+template <class KeyT, class ValT>
+class __HashTableBase {
+protected:
     uint64_t _size;
     uint64_t n_buckets;
-    __BucketListItem<KeyT, KeyT> **buckets; // key is value in hashset
+    __BucketListItem<KeyT, ValT> **buckets;
 
-    void free_bucket(__BucketListItem<KeyT, KeyT> *bucket_node) {
-        if (!bucket_node) {
-            fprintf(stderr, "MySet free error: bucket_node is nullptr.\n");
-            return;
-        }
-
-        __BucketListItem<KeyT, KeyT> *next_node;
-        while (bucket_node->next) {
-            next_node = bucket_node->next;
-            delete bucket_node;
-            bucket_node = next_node;
-        }
-        delete bucket_node;
-    }
-
-    int insert_to_bucket(KeyT key) {
-        __BucketListItem<KeyT, KeyT> *item = new __BucketListItem<KeyT, KeyT>;
-        if (!item) {
-            fprintf(stderr, "MySet insertion error: cannot allocate memory for new item.\n");
-            return -1;
-        }
-        item->key = key;
-        item->val = key;
-        item->next = nullptr;
-
-        size_t bucket_index = get_index(key);
-        if (!buckets[bucket_index]) { // no item in the list
-            buckets[bucket_index] = item;
-            return 0;
-        }
-
-        __BucketListItem<KeyT, KeyT> *bucket_node = buckets[bucket_index];
-        while (bucket_node->next) {
-            if (bucket_node->key == key) {
-                // Key == val
-                delete item;
-                return 0;
-            }
-            bucket_node = bucket_node->next;
-        }
-        if (bucket_node->key == key) {
-            // Key == val
-            delete item;
-            return 0;
-        }
-            
-        bucket_node->next = item;
-        return 0;
-    }
-
-    __BucketListItem<KeyT, KeyT> **buckets_enlarge_n(uint64_t new_n_buckets) {
-        // Return nullptr if failed. Return new buckets pointer on succeed.
-
-        if (new_n_buckets <= n_buckets) {
-            fprintf(stderr, "MySet bucket enlarge error: desired size is smaller than current size.\n");
-            return nullptr;
-        }
-
-        __BucketListItem<KeyT, KeyT> **new_buckets = \
-            new __BucketListItem<KeyT, KeyT>*[new_n_buckets];
-        if (!new_buckets) {
-            fprintf(stderr, "MySet bucket enlarge error: memory allocation failed for new buckets with number %lu.\n", new_n_buckets);
-            return nullptr;
-        }
-
-        for (size_t i=0; i < new_n_buckets; i++) {
-            new_buckets[i] = nullptr;
-        }
-
-        // From now on we need to be careful. We now change the pointers.
-        // Save old stuff.
-        __BucketListItem<KeyT, KeyT> **old_buckets = buckets;
-        uint64_t old_n_buckets = n_buckets;
-
-        // New memories
-        buckets = new_buckets;
-        n_buckets = new_n_buckets;
-
-        for (size_t i=0; i < old_n_buckets; i++) {
-            __BucketListItem<KeyT, KeyT> *tmp_bucket = old_buckets[i];
-
-            while (tmp_bucket) {
-                if (insert_to_bucket(tmp_bucket->key)) {
-                    goto failed;
-                }
-                tmp_bucket = tmp_bucket->next;
-            }
-        }
-
-        // Now clean up old memories
-        for (size_t i=0; i < old_n_buckets; i++) {
-            __BucketListItem<KeyT, KeyT> *tmp_bucket = old_buckets[i];
-
-            if (tmp_bucket) {
-                free_bucket(tmp_bucket);
-            }
-        }
-        delete[] old_buckets;
-        return buckets;
-
-    failed:
-        // if failed, we clean up newly allocated memories.
-        buckets = old_buckets;
-        n_buckets = old_n_buckets;
-
-        for (size_t i=0; i < new_n_buckets; i++) {
-            __BucketListItem<KeyT, KeyT> *tmp_bucket = new_buckets[i];
-
-            if (tmp_bucket) {
-                free_bucket(tmp_bucket);
-            }
-        }
-        delete[] new_buckets;
-        
-        return nullptr;
-    }
-
-    inline uint64_t get_index_from_hash(size_t hash) {
-        return hash % n_buckets;
-    }
-
-    uint64_t get_index(KeyT key) {
-        size_t hash = std::hash<KeyT>{}(key);
-        return get_index_from_hash(hash);
-    }
-
-public:
-    MySet() {
+    __HashTableBase() {
         _size = 0;
         n_buckets = __bucket_number_prime_list[0];
-        buckets = new __BucketListItem<KeyT, KeyT>*[n_buckets];
+        buckets = new __BucketListItem<KeyT, ValT>*[n_buckets];
         if (!buckets) {
-            fprintf(stderr, "MySet bucket initial error: memory allocation failed for buckets.\n");
+            fprintf(stderr, "MyMap bucket initial error: memory allocation failed for buckets.\n");
             exit(-1);
         }
         for (size_t i=0; i < n_buckets; i++) {
@@ -253,92 +127,13 @@ public:
         }
     }
 
-    ~MySet() {
+    ~__HashTableBase() {
         for (size_t i=0; i < n_buckets; i++) {
             if (buckets[i])
                 free_bucket(buckets[i]);
         }
         delete[] buckets;
     }
-
-    void insert(KeyT key) {
-        if (insert_to_bucket(key)) {
-            return;
-        }
-        _size++;
-
-        if (_size > n_buckets / 2) {
-            unsigned idx = 0;
-            uint64_t new_n_bucket = __bucket_number_prime_list[idx];
-
-            while (new_n_bucket <= n_buckets) {
-                new_n_bucket = __bucket_number_prime_list[++idx];
-                if (idx == 28) {
-                    fprintf(stderr, "MySet insertion warning: cannot enlarge anymore.\n");
-                    return;
-                }
-            }
-
-            buckets_enlarge_n(new_n_bucket);
-        }
-    }
-
-    KeyT& operator[](KeyT key) {
-        uint64_t index = get_index(key);
-        __BucketListItem<KeyT, KeyT> *bucket_node = buckets[index];
-        if (!bucket_node) {
-            fprintf(stderr, "MySet access error: cannot find key.\n");
-            exit(-1);
-        }
-
-        while (bucket_node) {
-            if (bucket_node->key == key) {
-                return bucket_node->val;
-            }
-            bucket_node = bucket_node->next;
-        }
-        fprintf(stderr, "MySet access error: cannot find key.\n");
-        exit(-1);
-    }
-
-    MyVector<KeyT> keys() {
-        // Get keys
-        MyVector<KeyT> ret;
-        for (size_t i=0; i < n_buckets; i++) {
-            __BucketListItem<KeyT, KeyT> *bucket_node = buckets[i];
-
-            while (bucket_node) {
-                ret.push_back(bucket_node->key);
-                bucket_node = bucket_node->next;
-            }
-        }
-        return ret;
-    }
-
-    bool containsKey(KeyT key) {
-        uint64_t index = get_index(key);
-        __BucketListItem<KeyT, KeyT> *bucket_node = buckets[index];
-        if (!bucket_node) {
-            return false;
-        }
-        while (bucket_node) {
-            if (bucket_node->key == key) {
-                return true;
-            }
-            bucket_node = bucket_node->next;
-        }
-        return false;
-    }
-
-};
-
-
-/* A simple implementation of hashtable. Essentially very similar to hash set. */
-template <class KeyT, class ValT>
-class MyMap {
-    uint64_t _size;
-    uint64_t n_buckets;
-    __BucketListItem<KeyT, ValT> **buckets; 
 
     void free_bucket(__BucketListItem<KeyT, ValT> *bucket_node) {
         if (!bucket_node) {
@@ -463,40 +258,98 @@ class MyMap {
         size_t hash = std::hash<KeyT>{}(key);
         return get_index_from_hash(hash);
     }
+};
 
+template <class KeyT>
+class MySet : protected __HashTableBase<KeyT, KeyT> {
 public:
-    MyMap() {
-        _size = 0;
-        n_buckets = __bucket_number_prime_list[0];
-        buckets = new __BucketListItem<KeyT, ValT>*[n_buckets];
-        if (!buckets) {
-            fprintf(stderr, "MyMap bucket initial error: memory allocation failed for buckets.\n");
-            exit(-1);
-        }
-        for (size_t i=0; i < n_buckets; i++) {
-            buckets[i] = nullptr;
-        }
-    }
-
-    ~MyMap() {
-        for (size_t i=0; i < n_buckets; i++) {
-            if (buckets[i])
-                free_bucket(buckets[i]);
-        }
-        delete[] buckets;
-    }
-
-    void insert(KeyT key, ValT val) {
-        if (insert_to_bucket(key, val)) {
+    void insert(KeyT key) {
+        if (__HashTableBase<KeyT, KeyT>::insert_to_bucket(key, key)) {
             return;
         }
-        _size++;
+        this->_size++;
 
-        if (_size > n_buckets / 2) {
+        if (this->_size > this->n_buckets / 2) {
             unsigned idx = 0;
             uint64_t new_n_bucket = __bucket_number_prime_list[idx];
 
-            while (new_n_bucket <= n_buckets) {
+            while (new_n_bucket <= this->n_buckets) {
+                new_n_bucket = __bucket_number_prime_list[++idx];
+                if (idx == 28) {
+                    fprintf(stderr, "MySet insertion warning: cannot enlarge anymore.\n");
+                    return;
+                }
+            }
+
+            __HashTableBase<KeyT, KeyT>::buckets_enlarge_n(new_n_bucket);
+        }
+    }
+
+    KeyT& operator[](KeyT key) {
+        uint64_t index = __HashTableBase<KeyT, KeyT>::get_index(key);
+        __BucketListItem<KeyT, KeyT> *bucket_node = this->buckets[index];
+        if (!bucket_node) {
+            fprintf(stderr, "MySet access error: cannot find key.\n");
+            exit(-1);
+        }
+
+        while (bucket_node) {
+            if (bucket_node->key == key) {
+                return bucket_node->val;
+            }
+            bucket_node = bucket_node->next;
+        }
+        fprintf(stderr, "MySet access error: cannot find key.\n");
+        exit(-1);
+    }
+
+    MyVector<KeyT> keys() {
+        // Get keys
+        MyVector<KeyT> ret;
+        for (size_t i=0; i < this->n_buckets; i++) {
+            __BucketListItem<KeyT, KeyT> *bucket_node = this->buckets[i];
+
+            while (bucket_node) {
+                ret.push_back(bucket_node->key);
+                bucket_node = bucket_node->next;
+            }
+        }
+        return ret;
+    }
+
+    bool containsKey(KeyT key) {
+        uint64_t index = __HashTableBase<KeyT, KeyT>::get_index(key);
+        __BucketListItem<KeyT, KeyT> *bucket_node = this->buckets[index];
+        if (!bucket_node) {
+            return false;
+        }
+        while (bucket_node) {
+            if (bucket_node->key == key) {
+                return true;
+            }
+            bucket_node = bucket_node->next;
+        }
+        return false;
+    }
+
+};
+
+
+/* A simple implementation of hashtable. Essentially very similar to hash set. */
+template <class KeyT, class ValT>
+class MyMap : protected __HashTableBase<KeyT, ValT> {
+public:
+    void insert(KeyT key, ValT val) {
+        if (__HashTableBase<KeyT, ValT>::insert_to_bucket(key, val)) {
+            return;
+        }
+        this->_size++;
+
+        if (this->_size > this->n_buckets / 2) {
+            unsigned idx = 0;
+            uint64_t new_n_bucket = __bucket_number_prime_list[idx];
+
+            while (new_n_bucket <= this->n_buckets) {
                 new_n_bucket = __bucket_number_prime_list[++idx];
                 if (idx == 28) {
                     fprintf(stderr, "MyMap insertion warning: cannot enlarge anymore.\n");
@@ -504,13 +357,13 @@ public:
                 }
             }
 
-            buckets_enlarge_n(new_n_bucket);
+            __HashTableBase<KeyT, ValT>::buckets_enlarge_n(new_n_bucket);
         }
     }
 
     ValT& operator[](KeyT key) {
-        uint64_t index = get_index(key);
-        __BucketListItem<KeyT, ValT> *bucket_node = buckets[index];
+        uint64_t index = __HashTableBase<KeyT, ValT>::get_index(key);
+        __BucketListItem<KeyT, ValT> *bucket_node = this->buckets[index];
         if (!bucket_node) {
             fprintf(stderr, "MyMap access error: cannot find key.\n");
             exit(-1);
@@ -529,8 +382,8 @@ public:
     MyVector<KeyT> keys() {
         // Get keys
         MyVector<KeyT> ret;
-        for (size_t i=0; i < n_buckets; i++) {
-            __BucketListItem<KeyT, ValT> *bucket_node = buckets[i];
+        for (size_t i=0; i < this->n_buckets; i++) {
+            __BucketListItem<KeyT, ValT> *bucket_node = this->buckets[i];
 
             while (bucket_node) {
                 ret.push_back(bucket_node->key);
@@ -541,8 +394,8 @@ public:
     }
 
     bool containsKey(KeyT key) {
-        uint64_t index = get_index(key);
-        __BucketListItem<KeyT, ValT> *bucket_node = buckets[index];
+        uint64_t index = __HashTableBase<KeyT, ValT>::get_index(key);
+        __BucketListItem<KeyT, ValT> *bucket_node = this->buckets[index];
         if (!bucket_node) {
             return false;
         }
