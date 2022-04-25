@@ -301,6 +301,20 @@ public:
         exit(-1);
     }
 
+    MyVector<KeyT> keys() {
+        // Get keys
+        MyVector<KeyT> ret;
+        for (size_t i=0; i < n_buckets; i++) {
+            __BucketListItem<KeyT, KeyT> *bucket_node = buckets[i];
+
+            while (bucket_node) {
+                ret.push_back(bucket_node->key);
+                bucket_node = bucket_node->next;
+            }
+        }
+        return ret;
+    }
+
 };
 
 
@@ -495,6 +509,20 @@ public:
         }
         fprintf(stderr, "MySet access error: cannot find key.\n");
         exit(-1);
+    }
+
+    MyVector<KeyT> keys() {
+        // Get keys
+        MyVector<KeyT> ret;
+        for (size_t i=0; i < n_buckets; i++) {
+            __BucketListItem<KeyT, ValT> *bucket_node = buckets[i];
+
+            while (bucket_node) {
+                ret.push_back(bucket_node->key);
+                bucket_node = bucket_node->next;
+            }
+        }
+        return ret;
     }
 
 };
