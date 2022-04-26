@@ -1,23 +1,30 @@
-#include "LoopDetect.h"
+#include "analyzer.h"
 
 #include <utility>
 #include <iostream>
 #include <map>
+#include <cassert>
 
 // Globals used by CallStack class
-std::map<ADDRINT, BBInfo *> basicBlocks;
-std::map<ADDRINT, LoopInfo *> loops;
+std::map<uint64_t, BBInfo *> basicBlocks;
+std::map<uint64_t, LoopInfo *> loops;
+
+// Global variable stack
+CallStack stack;
+
+// BBpath buffer
+std::vector<BBPathInfo *> bbpath_buffer;
 
 bool enable_dbg_print = false;
 
-static BBInfo *get_bbinfo(ADDRINT addr) {
+static BBInfo *get_bbinfo(uint64_t addr) {
     if (basicBlocks.find(addr) != basicBlocks.end()) {
         return basicBlocks[addr];
     } else {
         // Middle of a BB
         for (auto bit : basicBlocks) {
-            ADDRINT head = bit.second->instructions[0];
-            ADDRINT tail = bit.second->instructions.back();
+            uint64_t head = bit.second->instructions[0];
+            uint64_t tail = bit.second->instructions.back();
             if (addr > head && addr < tail) {
                 return bit.second;
             }
@@ -33,7 +40,7 @@ void StackFrame::popBB() {
         path.pop_back();
     } else {
         std::cerr << "No more BB to pop. \n";
-        PIN_ExitProcess(1);
+        exit(1);
     }
 }
 
@@ -42,7 +49,7 @@ void CallStack::popFrame() {
     assert(!callStack.empty());
 
     StackFrame *frame = callStack.back();
-    std::vector<ADDRINT> inners;
+    std::vector<uint64_t> inners;
 
     for (auto l : frame->topLoops) {
         inners.push_back(l);
@@ -63,7 +70,7 @@ void CallStack::popFrame() {
         return;
     }
     BBInfo *bbinfo = basicBlocks[frame->path.back()->head];
-    for (ADDRINT l : inners) {
+    for (uint64_t l : inners) {
         bbinfo->innerLoops.insert(l);
     }
 }
@@ -92,14 +99,14 @@ void CallStack::newFrame() {
     StackFrame *frame = new StackFrame();
     if (!frame) {
         std::cerr << "Error pushing frame. \n";
-        PIN_ExitProcess(1);
+        exit(1);
     }
     
     frame->retaddr = last_call_retaddr;
     callStack.push_back(frame);
 }
 
-void CallStack::adjustCallStack(ADDRINT bbhead) {
+void CallStack::adjustCallStack(uint64_t bbhead) {
     if (returned) { // Last BB has return
         StackFrame *frame;
 
@@ -152,7 +159,7 @@ StackFrame *CallStack::getTopFrame() {
     return callStack.back();
 }
 
-BBPathInfo *CallStack::isInPath(ADDRINT bbhead) {
+BBPathInfo *CallStack::isInPath(uint64_t bbhead) {
     StackFrame *frame = getTopFrame();
     
     // Search from back
@@ -162,7 +169,7 @@ BBPathInfo *CallStack::isInPath(ADDRINT bbhead) {
             return frame->path[i];
         } else if (frame->path[i]->head < bbhead) {
             // Get the address of the last instruction
-            ADDRINT tail = basicBlocks[frame->path[i]->head]->instructions.back(); 
+            uint64_t tail = basicBlocks[frame->path[i]->head]->instructions.back(); 
             if (tail && tail > bbhead) {
                 return frame->path[i];
             }
@@ -171,7 +178,7 @@ BBPathInfo *CallStack::isInPath(ADDRINT bbhead) {
     return nullptr;
 }
 
-void CallStack::newBB(ADDRINT head) {
+void CallStack::newBB(uint64_t head) {
     BBPathInfo *bpi = new BBPathInfo();
     bpi->head = head;
 
@@ -182,8 +189,8 @@ void CallStack::newBB(ADDRINT head) {
 void CallStack::printCallStack(bool printBB=false) {
     std::cerr << "Printing current Call Stack: " << std::endl;
     for (int j = callStack.size() - 1; j >=0; j--) {
-        ADDRINT retaddr = callStack[j]->retaddr;
-        ADDRINT frameaddr = callStack[j]->path[0]->head;
+        uint64_t retaddr = callStack[j]->retaddr;
+        uint64_t frameaddr = callStack[j]->path[0]->head;
         std::cerr << std::hex << "    Frame at 0x" << frameaddr << " with Ret address: 0x"  << retaddr << std::endl;
         if (printBB) {
             if (callStack[j]->path.size() == 0) {
@@ -196,9 +203,6 @@ void CallStack::printCallStack(bool printBB=false) {
         }
     }
 }
-
-// Global variable stack, will be accessed by instrumentation functions
-CallStack stack;
 
 void processLoop(BBPathInfo *loopheadBB) {
     // std::cerr << "Process Loop" <<'\n';
@@ -223,7 +227,7 @@ void processLoop(BBPathInfo *loopheadBB) {
     for (int i = frame->path.size() - 1; ; i--) {
         assert(i>=0);
 
-        ADDRINT startingAddress = frame->path[i]->head;
+        uint64_t startingAddress = frame->path[i]->head;
         BBInfo *bbinfo_current = basicBlocks[startingAddress];
 
         // Associate BB
@@ -235,7 +239,7 @@ void processLoop(BBPathInfo *loopheadBB) {
             curloop->children.insert(childLoop);
         }
 
-        for (ADDRINT insaddr : bbinfo_current->instructions) {
+        for (uint64_t insaddr : bbinfo_current->instructions) {
             // Associate instruction
             curloop->associatedInsts.insert(insaddr);
         }
@@ -252,7 +256,7 @@ void processLoop(BBPathInfo *loopheadBB) {
 
 
 
-void processBB(ADDRINT bbhead) {
+void processBB(uint64_t bbhead) {
     stack.adjustCallStack(bbhead);
 
     if (stack.callStack.empty()) {
@@ -269,45 +273,12 @@ void processBB(ADDRINT bbhead) {
     }
 }
 
-
-void LoopDetect(TRACE trace, VOID *v) {
-    
-    for (BBL bbl = TRACE_BblHead(trace); BBL_Valid(bbl); bbl = BBL_Next(bbl)) {
-
-        BBL_InsertCall(bbl, IPOINT_BEFORE, (AFUNPTR) processBB, IARG_ADDRINT, BBL_Address(bbl), IARG_END);
-        BBInfo *bbinfo = new BBInfo();
-        bbinfo->head = BBL_Address(bbl);
-
-        // Prepare instruction info in the basic block
-        INS ins;
-        for (ins = BBL_InsHead(bbl); ; ins = INS_Next(ins)) {
-            bbinfo->instructions.push_back(INS_Address(ins));
-            /* Debug */
-            // bbinfo->inst_disassem[INS_Address(ins)] = INS_Disassemble(ins);
-            /* End Debug */
-            if (ins == BBL_InsTail(bbl)) {
-                if (INS_IsCall(ins)) {
-                    bbinfo->contains_call = true;
-                    bbinfo->retaddr = INS_NextAddress(ins);
-                }
-                if (INS_IsRet(ins)) {
-                    bbinfo->contains_ret = true;
-                }
-                
-                break;
-            }  
-        }
-
-        basicBlocks[bbinfo->head] = bbinfo;
-    }
-}
-
 void linkInnerLoop() {
     // Perform inner loop linking
     for (auto bbit : basicBlocks) {
         BBInfo *bbinfo = bbit.second;
         if (!bbinfo->innerLoops.empty() && bbinfo->associatedTopLoop) {
-            for (ADDRINT l : bbinfo->innerLoops) {
+            for (uint64_t l : bbinfo->innerLoops) {
                loops[bbinfo->associatedTopLoop]->children.insert(loops[l]); 
             }
         }
@@ -319,7 +290,7 @@ void WrapUp() {
     
     std::cerr << "################ loop Results ##################" << std::endl;
     
-    std::map<ADDRINT, ADDRINT> address2loopid;
+    std::map<uint64_t, uint64_t> address2loopid;
     for (auto loop : loops) {
 
         cout<<"Loop Head Basic Block: 0x"<< std::hex <<loop.second->head<<endl;
@@ -330,38 +301,82 @@ void WrapUp() {
     }
 }
 
-VOID ThreadFini(THREADID threadIndex, const CONTEXT *ctxt, INT32 code, VOID *v) {
-    WrapUp();
+
+std::vector<std::string> split_string(std::string s, const std::string& delimiter) {
+    size_t pos = 0;
+    std::string token;
+    std::vector<std::string> ret;
+
+    while ((pos = s.find(delimiter)) != std::string::npos) {
+        token = s.substr(0, pos);
+        ret.push_back(token);
+        s.erase(0, pos + delimiter.length());
+    }
+    if (s != "")
+        ret.push_back(s);
+
+    return ret;
 }
+
+
+void load_record(std::string record_filename) {
+    auto ifs = std::ifstream(record_filename);
+    std::string buf;
+
+    while (ifs.good()) {
+        std::getline(ifs, buf);
+        if (buf == "0") {
+            // BBInfo: load to basicBlocks
+            std::getline(ifs, buf);
+            // std::cerr << buf << endl;
+            auto contents = split_string(buf, ",");
+
+            BBInfo *bbinfo = new BBInfo;
+            bbinfo->head = std::stoul(contents[0], nullptr, 16);
+            bbinfo->contains_call = std::stoi(contents[1]);
+            bbinfo->contains_ret = std::stoi(contents[2]);
+            bbinfo->retaddr = std::stoul(contents[3], nullptr, 16);
+
+            for (size_t i=4; i < contents.size(); i++) {
+                bbinfo->instructions.push_back(std::stoul(contents[i], nullptr, 16));
+            }
+
+            basicBlocks[bbinfo->head] = bbinfo;
+
+            continue; // next record
+        } else if (buf == "1") {
+            // BBPathInfo: load to bbpath_buffer
+            std::getline(ifs, buf);
+            auto contents = split_string(buf, ",");
+            assert(contents.size() == 1);
+
+            BBPathInfo *bpi = new BBPathInfo;
+            bpi->head = std::stoul(contents[0], nullptr, 16);
+
+            bbpath_buffer.push_back(bpi);
+
+            continue; // next record
+        }
+    }
+
+}
+
 
 
 int main(int argc, char * argv[]){
-    // Initialize pin
-    //PIN_InitSymbols();
-    PIN_InitSymbolsAlt(SYMBOL_INFO_MODE(UINT32(IFUNC_SYMBOLS) | UINT32(DEBUG_OR_EXPORT_SYMBOLS)));
-    if (PIN_Init(argc, argv)) {
-        std::cerr << "Error on starting Pin Tool." << std::endl;
-        return 1;
+    if (argc != 2) {
+        std::cerr << "Usage: " << argv[0] << " " << "<loop detecct record file>" << endl;
+        exit(1);
     }
 
-    // Register ThreadStart to be called when a thread starts.
-    // PIN_AddThreadStartFunction(ThreadStart, NULL);
+    load_record(argv[1]);
 
-    // Register Fini to be called when thread exits.
-    PIN_AddThreadFiniFunction(ThreadFini, NULL);
+    for (auto bpi : bbpath_buffer) {
+        // std::cerr << "Process BB: 0x" << std::hex << bpi->head << std::endl;
+        processBB(bpi->head);
+    }
 
-    // Register Fini to be called when the application exits.
-    // PIN_AddFiniFunction(Fini, NULL);
+    WrapUp();
 
-    // Register Trace to be called to instrument instructions.
-    TRACE_AddInstrumentFunction(LoopDetect, NULL);
-
-    // Register ImageLoad to be called when loading images.
-    // IMG_AddInstrumentFunction(ImageLoad, 0);
-
-    // Start the program, never returns
-    PIN_StartProgram();
-
-    return 1;
+    return 0;
 }
-
