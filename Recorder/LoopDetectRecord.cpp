@@ -19,18 +19,18 @@ struct BBInfo {
 
 FILE * fd;
 
-BBInfo **basicBlockInfos = nullptr;
+BBInfo *basicBlockInfos = nullptr;
 size_t bbis_size = 0;
 size_t bbis_capacity = 0;
-BBPathInfo **BBdumps = nullptr;
+BBPathInfo *BBdumps = nullptr;
 size_t bbds_size = 0;
 size_t bbds_capacity = 0;
 
 // Utility functions for saving data.
-void append_bbis(BBInfo *bbi) {
+void append_bbis(BBInfo bbi) {
     if (bbis_capacity == bbis_size) {
         size_t new_capacity = bbis_capacity + bbis_capacity / 2;
-        BBInfo **new_basicBlockInfos = new BBInfo*[new_capacity];
+        BBInfo *new_basicBlockInfos = new BBInfo[new_capacity];
 
         for (size_t i=0; i < bbis_size; i++) {
             new_basicBlockInfos[i] = basicBlockInfos[i];
@@ -43,11 +43,11 @@ void append_bbis(BBInfo *bbi) {
     basicBlockInfos[bbis_size++] = bbi;
 }
 
-void append_bbds(BBPathInfo *bbd) {
+void append_bbds(BBPathInfo bbd) {
     if (bbds_capacity == bbds_size) {
         size_t new_capacity = bbds_capacity + bbds_capacity / 2;
-        BBPathInfo **new_BBdumps = new BBPathInfo*[new_capacity];
-
+        BBPathInfo *new_BBdumps = new BBPathInfo[new_capacity];
+        
         for (size_t i=0; i < bbds_size; i++) {
             new_BBdumps[i] = BBdumps[i];
         }
@@ -60,8 +60,8 @@ void append_bbds(BBPathInfo *bbd) {
 }
 
 void recordBB(ADDRINT bbhead) {
-    BBPathInfo *bb = new BBPathInfo;
-    bb->head = bbhead;
+    BBPathInfo bb;
+    bb.head = bbhead;
     append_bbds(bb);
 }
 
@@ -70,26 +70,26 @@ void LoopDetectRecord(TRACE trace, VOID *v) {
     for (BBL bbl = TRACE_BblHead(trace); BBL_Valid(bbl); bbl = BBL_Next(bbl)) {
 
         BBL_InsertCall(bbl, IPOINT_BEFORE, (AFUNPTR) recordBB, IARG_ADDRINT, BBL_Address(bbl), IARG_END);
-        BBInfo *bbinfo = new BBInfo;
-        bbinfo->head = BBL_Address(bbl);
+        BBInfo bbinfo = BBInfo();
+        bbinfo.head = BBL_Address(bbl);
 
         // Prepare instruction info in the basic block
         INS ins;
         for (ins = BBL_InsHead(bbl); ; ins = INS_Next(ins)) {
-            if (bbinfo->n_ins == 250) {
+            if (bbinfo.n_ins == 250) {
                 break;
             }
-            bbinfo->instructions[bbinfo->n_ins++] = INS_Address(ins);
+            bbinfo.instructions[bbinfo.n_ins++] = INS_Address(ins);
             /* Debug */
             // bbinfo->inst_disassem[INS_Address(ins)] = INS_Disassemble(ins);
             /* End Debug */
             if (ins == BBL_InsTail(bbl)) {
                 if (INS_IsCall(ins)) {
-                    bbinfo->contains_call = true;
-                    bbinfo->retaddr = INS_NextAddress(ins);
+                    bbinfo.contains_call = true;
+                    bbinfo.retaddr = INS_NextAddress(ins);
                 }
                 if (INS_IsRet(ins)) {
-                    bbinfo->contains_ret = true;
+                    bbinfo.contains_ret = true;
                 }
                 
                 break;
@@ -105,19 +105,17 @@ void dump_bbinfo() {
         fprintf(fd, "%d\n", 0); // 0 for BBinfo
         fprintf(
             fd, "%lx,%d,%d,%lx,",
-            basicBlockInfos[i]->head,
-            basicBlockInfos[i]->contains_call,
-            basicBlockInfos[i]->contains_ret,
-            basicBlockInfos[i]->retaddr
-        ); // First for members
+            basicBlockInfos[i].head,
+            basicBlockInfos[i].contains_call,
+            basicBlockInfos[i].contains_ret,
+            basicBlockInfos[i].retaddr
+        ); // First 4 members, n_ins need not to be recorded
 
         // Instruction addrs
-        for (size_t j=0; j < basicBlockInfos[i]->n_ins; j++) {
-            fprintf(fd, "%lx,", basicBlockInfos[i]->instructions[j]);
+        for (size_t j=0; j < basicBlockInfos[i].n_ins; j++) {
+            fprintf(fd, "%lx,", basicBlockInfos[i].instructions[j]);
         }
         fprintf(fd, "\n");
-
-        delete basicBlockInfos[i];
     }
 }
 
@@ -125,9 +123,7 @@ void dump_bbpath() {
     fprintf(stdout, "Total bbpath size: %lu\n", bbds_size);
     for (size_t i=0; i < bbds_size; i++) {
         fprintf(fd, "%d\n", 1); // 1 for BBPathinfo
-        fprintf(fd, "%lx,\n", BBdumps[i]->head); // First for members
-
-        delete BBdumps[i];
+        fprintf(fd, "%lx,\n", BBdumps[i].head); // First for members
     }
 }
 
@@ -151,9 +147,9 @@ int main(int argc, char * argv[]){
     }
 
     // Buffer init
-    basicBlockInfos = new BBInfo*[500];
+    basicBlockInfos = new BBInfo[500];
     bbis_capacity = 500;
-    BBdumps = new BBPathInfo*[5000];
+    BBdumps = new BBPathInfo[5000];
     bbds_capacity = 5000;
 
 
