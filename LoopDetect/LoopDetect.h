@@ -2,15 +2,13 @@
 #define LOOPDETECT_H
 
 #include "pin.H"
-#include <vector>
-#include <set>
+#include "containers.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <utility>
 #include <string>
 #include <cstring>
-#include <queue>
 
 using std::string;
 using std::ofstream;
@@ -21,8 +19,8 @@ struct LoopInfo {
     ADDRINT head;
     uint64_t iter = 1;
     uint64_t level;
-    std::set<ADDRINT> associatedInsts;
-    std::set<LoopInfo *> children;
+    MySet<ADDRINT> associatedInsts;
+    MySet<LoopInfo *> children;
 };
 
 struct BBPathInfo {
@@ -37,18 +35,18 @@ struct BBInfo {
     bool contains_ret = false;
     ADDRINT retaddr = 0; // Only nonzero if contains call
 
-    std::set<BBInfo *> loopEdges; // Backedge to loop head, if this BB is an end of the loop
-    std::vector<ADDRINT> instructions;
-    std::map<ADDRINT, std::string> inst_disassem;
+    MySet<BBInfo *> loopEdges; // Backedge to loop head, if this BB is an end of the loop
+    MyVector<ADDRINT> instructions;
+    MyMap<ADDRINT, std::string> inst_disassem; // Debug
     ADDRINT associatedTopLoop = 0; // The most "outer"/"parent" loop associated to this BB. TODO: Possible Bugs here
-    std::set<ADDRINT> innerLoops;
+    MySet<ADDRINT> innerLoops;
 };
 
 struct StackFrame {
     ADDRINT retaddr; // Address to continue execution after return (this frame popped)
     
-    std::vector<BBPathInfo *> path;
-    std::set<ADDRINT> topLoops;
+    MyVector<BBPathInfo *> path;
+    MySet<ADDRINT> topLoops;
 
     void popBB();
 };
@@ -60,7 +58,7 @@ class CallStack {
     bool returned = false; // Last processed BB contains return
 
 public:
-    std::vector<StackFrame *> callStack;
+    MyVector<StackFrame *> callStack;
     void popFrame();
     void popBB();
 

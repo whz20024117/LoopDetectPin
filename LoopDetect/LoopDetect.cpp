@@ -2,24 +2,27 @@
 
 #include <utility>
 #include <iostream>
-#include <map>
+#include <unordered_map>
 
 // Globals used by CallStack class
-std::map<ADDRINT, BBInfo *> basicBlocks;
-std::map<ADDRINT, LoopInfo *> loops;
+MyMap<ADDRINT, BBInfo *> basicBlocks;
+MyMap<ADDRINT, LoopInfo *> loops;
 
 bool enable_dbg_print = false;
 
 static BBInfo *get_bbinfo(ADDRINT addr) {
-    if (basicBlocks.find(addr) != basicBlocks.end()) {
+    if (basicBlocks.containsKey(addr)) {
         return basicBlocks[addr];
     } else {
         // Middle of a BB
-        for (auto bit : basicBlocks) {
-            ADDRINT head = bit.second->instructions[0];
-            ADDRINT tail = bit.second->instructions.back();
+        auto basicBlocks_keys = basicBlocks.keys();
+        for (size_t i=0; i<basicBlocks_keys.size(); i++) {
+            auto k = basicBlocks_keys[i];
+
+            ADDRINT head = basicBlocks[k]->instructions[0];
+            ADDRINT tail = basicBlocks[k]->instructions.back();
             if (addr > head && addr < tail) {
-                return bit.second;
+                return basicBlocks[k];
             }
         }
     }
@@ -42,11 +45,9 @@ void CallStack::popFrame() {
     assert(!callStack.empty());
 
     StackFrame *frame = callStack.back();
-    std::vector<ADDRINT> inners;
+    MyVector<ADDRINT> inners;
 
-    for (auto l : frame->topLoops) {
-        inners.push_back(l);
-    }
+    inners = frame->topLoops.keys();
 
     // Pop the top Frame
     delete callStack.back();
@@ -63,8 +64,9 @@ void CallStack::popFrame() {
         return;
     }
     BBInfo *bbinfo = basicBlocks[frame->path.back()->head];
-    for (ADDRINT l : inners) {
-        bbinfo->innerLoops.insert(l);
+    
+    for (size_t i=0; i<inners.size(); i++) {
+        bbinfo->innerLoops.insert(inners[i]);
     }
 }
 
@@ -82,7 +84,7 @@ void CallStack::pushBB(BBPathInfo *bpi) {
     StackFrame *frame = callStack.back();
 
     // Increment the iteration (executed times)
-    assert(basicBlocks.find(bpi->head) != basicBlocks.end());
+    assert(basicBlocks.containsKey(bpi->head));
     basicBlocks[bpi->head]->iter += 1;
 
     frame->path.push_back(bpi);
@@ -202,8 +204,8 @@ CallStack stack;
 
 void processLoop(BBPathInfo *loopheadBB) {
     // std::cerr << "Process Loop" <<'\n';
-    if (loops.find(loopheadBB->head) == loops.end()) {
-        loops[loopheadBB->head] = new LoopInfo();
+    if (!loops.containsKey(loopheadBB->head)) {
+        loops.insert(loopheadBB->head, new LoopInfo());
         loops[loopheadBB->head]->head = loopheadBB->head;
     }
 
@@ -230,14 +232,14 @@ void processLoop(BBPathInfo *loopheadBB) {
         bbinfo_current->associatedTopLoop = curloop->head;
 
         // Nested loop cases: bbl is already a head for another loop L; This means L is a child of current loop.
-        if (loops.find(bbinfo_current->head) != loops.end()) {
+        if (loops.containsKey(bbinfo_current->head)) {
             LoopInfo *childLoop = loops[bbinfo_current->head];
             curloop->children.insert(childLoop);
         }
 
-        for (ADDRINT insaddr : bbinfo_current->instructions) {
+        for (size_t idx=0; idx < bbinfo_current->instructions.size(); idx++) {
             // Associate instruction
-            curloop->associatedInsts.insert(insaddr);
+            curloop->associatedInsts.insert(bbinfo_current->instructions[idx]);
         }
 
         if (frame->path[i] == loopheadBB)
@@ -253,7 +255,9 @@ void processLoop(BBPathInfo *loopheadBB) {
 
 
 void processBB(ADDRINT bbhead) {
+    std::cerr << "New BB 0x" << std::hex << bbhead <<'\n';
     stack.adjustCallStack(bbhead);
+    std::cerr << "Adjusted Stack" <<'\n';
 
     if (stack.callStack.empty()) {
         // Before the dynamic linker (e.g. ld-linux.so) set up everything, we may encounter situation when
@@ -263,9 +267,17 @@ void processBB(ADDRINT bbhead) {
     BBPathInfo *bpi = stack.isInPath(bbhead);
 
     if (bpi) {
+        if (1) {
+            std::cerr << "loopDetected at BB 0x" << std::hex << bbhead << '\n';
+            // stack.printCallStack(true);
+            // for (auto inst_dis_it : basicBlocks[bbhead]->inst_disassem) {
+            //     std::cerr << "    0x" << std::hex << inst_dis_it.first << ": " << inst_dis_it.second << std::endl;
+            // }
+        }
         processLoop(bpi);
     } else {
         stack.newBB(bbhead);
+        std::cerr << "Done add new bb" <<'\n';
     }
 }
 
@@ -298,17 +310,22 @@ void LoopDetect(TRACE trace, VOID *v) {
             }  
         }
 
-        basicBlocks[bbinfo->head] = bbinfo;
+        basicBlocks.insert(bbinfo->head, bbinfo);
     }
 }
 
 void linkInnerLoop() {
     // Perform inner loop linking
-    for (auto bbit : basicBlocks) {
-        BBInfo *bbinfo = bbit.second;
+    auto bb_keys = basicBlocks.keys();
+
+    for (size_t i=0; i < bb_keys.size(); i++) {
+        auto bbk = bb_keys[i];
+        BBInfo *bbinfo = basicBlocks[bbk];
         if (!bbinfo->innerLoops.empty() && bbinfo->associatedTopLoop) {
-            for (ADDRINT l : bbinfo->innerLoops) {
-               loops[bbinfo->associatedTopLoop]->children.insert(loops[l]); 
+            auto innerloops_items = bbinfo->innerLoops.keys();
+            for (size_t j=0; j < innerloops_items.size(); j++) {
+                auto l = innerloops_items[j];
+                loops[bbinfo->associatedTopLoop]->children.insert(loops[l]); 
             }
         }
     }
@@ -319,14 +336,10 @@ void WrapUp() {
     
     std::cerr << "################ loop Results ##################" << std::endl;
     
-    std::map<ADDRINT, ADDRINT> address2loopid;
-    for (auto loop : loops) {
-
-        cout<<"Loop Head Basic Block: 0x"<< std::hex <<loop.second->head<<endl;
-        
-        for (auto I : loop.second->associatedInsts) {
-            address2loopid[I] = loop.second->head;
-        }
+    auto loops_keys = loops.keys();
+    for (size_t i=0; i < loops_keys.size(); i++) {
+        auto loop = loops[ loops_keys[i] ];
+        cout<<"Loop Head Basic Block: 0x"<< std::hex <<loop->head<<endl;
     }
 }
 
