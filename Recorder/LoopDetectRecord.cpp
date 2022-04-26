@@ -1,7 +1,6 @@
 #include "pin.H"
 #include <stdlib.h>
 #include <stdio.h>
-#include "containers.h"
 
 struct BBPathInfo {
     ADDRINT head;
@@ -13,19 +12,57 @@ struct BBInfo {
     bool contains_ret = false;
     ADDRINT retaddr = 0; // Only nonzero if contains call
 
-    MyVector<ADDRINT> instructions;
+    size_t n_ins = 0;
+    ADDRINT instructions[250];
 };
 
 
 FILE * fd;
 
-MyVector<BBInfo *> basicBlocks;
-MyVector<BBPathInfo *> BBdumps;
+BBInfo **basicBlockInfos = nullptr;
+size_t bbis_size = 0;
+size_t bbis_capacity = 0;
+BBPathInfo **BBdumps = nullptr;
+size_t bbds_size = 0;
+size_t bbds_capacity = 0;
+
+// Utility functions for saving data.
+void append_bbis(BBInfo *bbi) {
+    if (bbis_capacity == bbis_size) {
+        size_t new_capacity = bbis_capacity + bbis_capacity / 2;
+        BBInfo **new_basicBlockInfos = new BBInfo*[new_capacity];
+
+        for (size_t i=0; i < bbis_size; i++) {
+            new_basicBlockInfos[i] = basicBlockInfos[i];
+        }
+        delete[] basicBlockInfos;
+        basicBlockInfos = new_basicBlockInfos;
+        bbis_capacity = new_capacity;
+    }
+
+    basicBlockInfos[bbis_size++] = bbi;
+}
+
+void append_bbds(BBPathInfo *bbd) {
+    if (bbds_capacity == bbds_size) {
+        size_t new_capacity = bbds_capacity + bbds_capacity / 2;
+        BBPathInfo **new_BBdumps = new BBPathInfo*[new_capacity];
+
+        for (size_t i=0; i < bbds_size; i++) {
+            new_BBdumps[i] = BBdumps[i];
+        }
+        delete[] BBdumps;
+        BBdumps = new_BBdumps;
+        bbds_capacity = new_capacity;
+    }
+
+    BBdumps[bbds_size++] = bbd;
+}
 
 void recordBB(ADDRINT bbhead) {
     BBPathInfo *bb = new BBPathInfo;
     bb->head = bbhead;
-    BBdumps.push_back(bb);
+    append_bbds(bb);
 }
 
 void LoopDetectRecord(TRACE trace, VOID *v) {
@@ -39,7 +76,10 @@ void LoopDetectRecord(TRACE trace, VOID *v) {
         // Prepare instruction info in the basic block
         INS ins;
         for (ins = BBL_InsHead(bbl); ; ins = INS_Next(ins)) {
-            bbinfo->instructions.push_back(INS_Address(ins));
+            if (bbinfo->n_ins == 250) {
+                break;
+            }
+            bbinfo->instructions[bbinfo->n_ins++] = INS_Address(ins);
             /* Debug */
             // bbinfo->inst_disassem[INS_Address(ins)] = INS_Disassemble(ins);
             /* End Debug */
@@ -55,33 +95,33 @@ void LoopDetectRecord(TRACE trace, VOID *v) {
                 break;
             }  
         }
-        basicBlocks.push_back(bbinfo);
+        append_bbis(bbinfo);
     }
 }
 
 void dump_bbinfo() {
-    for (size_t i=0; i < basicBlocks.size(); i++) {
+    for (size_t i=0; i < bbis_size; i++) {
         fprintf(fd, "%d\n", 0); // 0 for BBinfo
         fprintf(
             fd, "%lx,%d,%d,%lx,",
-            basicBlocks[i]->head,
-            basicBlocks[i]->contains_call,
-            basicBlocks[i]->contains_ret,
-            basicBlocks[i]->retaddr
+            basicBlockInfos[i]->head,
+            basicBlockInfos[i]->contains_call,
+            basicBlockInfos[i]->contains_ret,
+            basicBlockInfos[i]->retaddr
         ); // First for members
 
         // Instruction addrs
-        for (size_t j=0; j < basicBlocks[i]->instructions.size(); j++) {
-            fprintf(fd, "%lx,", basicBlocks[i]->instructions[j]);
+        for (size_t j=0; j < basicBlockInfos[i]->n_ins; j++) {
+            fprintf(fd, "%lx,", basicBlockInfos[i]->instructions[j]);
         }
         fprintf(fd, "\n");
 
-        delete basicBlocks[i];
+        delete basicBlockInfos[i];
     }
 }
 
 void dump_bbpath() {
-    for (size_t i=0; i < BBdumps.size(); i++) {
+    for (size_t i=0; i < bbds_size; i++) {
         fprintf(fd, "%d\n", 1); // 1 for BBPathinfo
         fprintf(fd, "%lx,\n", BBdumps[i]->head); // First for members
 
@@ -90,12 +130,12 @@ void dump_bbpath() {
 }
 
 VOID Fini(INT32 code, VOID *v) {
-    dump_bbinfo();
-    dump_bbpath();
+    
 }
 
 VOID ThreadFini(THREADID threadIndex, const CONTEXT *ctxt, INT32 code, VOID *v) {
-    
+    dump_bbinfo();
+    dump_bbpath();
 }
 
 int main(int argc, char * argv[]){
@@ -103,9 +143,16 @@ int main(int argc, char * argv[]){
     //PIN_InitSymbols();
     PIN_InitSymbolsAlt(SYMBOL_INFO_MODE(UINT32(IFUNC_SYMBOLS) | UINT32(DEBUG_OR_EXPORT_SYMBOLS)));
     if (PIN_Init(argc, argv)) {
-        std::cerr << "Error on starting Pin Tool." << std::endl;
+        fprintf(stderr, "Error on starting Pin Tool.\n");
         return 1;
     }
+
+    // Buffer init
+    basicBlockInfos = new BBInfo*[500];
+    bbis_capacity = 500;
+    BBdumps = new BBPathInfo*[5000];
+    bbds_capacity = 5000;
+
 
     // Open file
     fd = fopen("loop_detect_record.txt", "w");
