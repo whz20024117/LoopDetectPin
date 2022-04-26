@@ -100,6 +100,7 @@ void LoopDetectRecord(TRACE trace, VOID *v) {
 }
 
 void dump_bbinfo() {
+    fprintf(stdout, "Total bbinfo size: %lu\n", bbis_size);
     for (size_t i=0; i < bbis_size; i++) {
         fprintf(fd, "%d\n", 0); // 0 for BBinfo
         fprintf(
@@ -121,6 +122,7 @@ void dump_bbinfo() {
 }
 
 void dump_bbpath() {
+    fprintf(stdout, "Total bbpath size: %lu\n", bbds_size);
     for (size_t i=0; i < bbds_size; i++) {
         fprintf(fd, "%d\n", 1); // 1 for BBPathinfo
         fprintf(fd, "%lx,\n", BBdumps[i]->head); // First for members
@@ -136,6 +138,7 @@ VOID Fini(INT32 code, VOID *v) {
 VOID ThreadFini(THREADID threadIndex, const CONTEXT *ctxt, INT32 code, VOID *v) {
     dump_bbinfo();
     dump_bbpath();
+    fprintf(stdout, "Trace Dump finished; \n");
 }
 
 int main(int argc, char * argv[]){
