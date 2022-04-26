@@ -1,6 +1,10 @@
+#ifndef LOOPDETECT_MYCONTAINERS_H
+#define LOOPDETECT_MYCONTAINERS_H
+
 #include <functional>
 #include <stdio.h>
 #include <string.h>
+#include <iostream>
 
 
 /* A simple implementation of vector, with no use of STL containers. class T can only be an integer/pointer */
@@ -83,13 +87,41 @@ public:
         return container[i];
     }
 
-    uint64_t size() {
+    size_t size() {
         return _size;
+    }
+
+    bool empty() {
+        if (_size == 0)
+            return true;
+        else
+            return false;
     }
 };
 
 
-/* A simple implementation of hashset, with no use of STL containers. Key can only be an integer/pointer */
+/* Hash table implementations */
+
+// djb2 Hash function
+size_t djb2(const void *ptr, size_t len)
+{
+    size_t hash = 5381ul;
+    char c;
+    const char *p = (const char *) ptr;
+
+    while (len--) {
+        c = *p++;
+        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+    }
+
+    return hash;
+}
+
+template <class T>
+size_t myhash(T key) {
+    return djb2(&key, sizeof(T));
+}
+
 const uint64_t __bucket_number_prime_list[29] = {
   5ul, 53ul, 97ul, 193ul, 389ul,
   769ul, 1543ul, 3079ul, 6151ul, 12289ul,
@@ -255,11 +287,14 @@ protected:
     }
 
     uint64_t get_index(KeyT key) {
-        size_t hash = std::hash<KeyT>{}(key);
+        size_t hash;
+        hash = myhash<KeyT>(key);
         return get_index_from_hash(hash);
     }
 };
 
+
+/* A simple implementation of hashset, with no use of STL containers. Key can only be an integer/pointer */
 template <class KeyT>
 class MySet : protected __HashTableBase<KeyT, KeyT> {
 public:
@@ -332,10 +367,17 @@ public:
         return false;
     }
 
+    bool empty() {
+        if (this->_size == 0)
+            return true;
+        else
+            return false;
+    }
+
 };
 
 
-/* A simple implementation of hashtable. Essentially very similar to hash set. */
+/* A simple implementation of hashmap. Essentially very similar to hash set. */
 template <class KeyT, class ValT>
 class MyMap : protected __HashTableBase<KeyT, ValT> {
 public:
@@ -408,4 +450,13 @@ public:
         return false;
     }
 
+    bool empty() {
+        if (this->_size == 0)
+            return true;
+        else
+            return false;
+    }
+
 };
+
+#endif /* LOOPDETECT_MYCONTAINERS_H */
