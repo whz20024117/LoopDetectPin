@@ -4,3 +4,6 @@ obj-ia32
 /old
 /pin
 /test
+Analyzer/analyzer
+a.out
+*.exe
