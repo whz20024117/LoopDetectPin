@@ -69,7 +69,7 @@ public:
     StackFrame *getTopFrame();
     BBPathInfo *isInPath(uint64_t bbhead);
 
-    void adjustCallStack(uint64_t bbhead);
+    bool adjustCallStack(uint64_t bbhead);
 };
 
 

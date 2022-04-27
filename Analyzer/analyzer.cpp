@@ -106,14 +106,19 @@ void CallStack::newFrame() {
     callStack.push_back(frame);
 }
 
-void CallStack::adjustCallStack(uint64_t bbhead) {
+bool CallStack::adjustCallStack(uint64_t bbhead) {
+    BBInfo *bbhead_bbi = get_bbinfo(bbhead);
+    // First check if the BB is documented
+    if (!bbhead_bbi)
+        return false;
+    
     if (returned) { // Last BB has return
         StackFrame *frame;
 
         /* First check if the return destination is in our stack... */
         bool ret_dest_in_stack = false;
         for (int i = callStack.size() - 1; i >=0; i--) {
-            if (callStack[i]->retaddr == get_bbinfo(bbhead)->head) {
+            if (callStack[i]->retaddr == bbhead_bbi->head) {
                 ret_dest_in_stack = true;
                 break;
             }
@@ -125,7 +130,7 @@ void CallStack::adjustCallStack(uint64_t bbhead) {
                 std::cerr << "Adjust Call Stack meet invalid return! bbhead = 0x" << std::hex << bbhead << std::endl;
                 break;
             }
-            if (get_bbinfo(bbhead)->head == get_bbinfo(frame->path.back()->head)->retaddr)
+            if (bbhead_bbi->head == get_bbinfo(frame->path.back()->head)->retaddr)
                 break;
             popFrame();
         }
@@ -138,18 +143,19 @@ void CallStack::adjustCallStack(uint64_t bbhead) {
     }
 
     // Setup
-    if (get_bbinfo(bbhead)->contains_ret) {
+    if (bbhead_bbi->contains_ret) {
         returned = true;
     } else {
         returned = false;
     }
-    if (get_bbinfo(bbhead)->contains_call) {
+    if (bbhead_bbi->contains_call) {
         called = true;
-        last_call_retaddr = get_bbinfo(bbhead)->retaddr;
+        last_call_retaddr = bbhead_bbi->retaddr;
     } else {
         called = false;
         last_call_retaddr = 0;
     }
+    return true;
 }
 
 StackFrame *CallStack::getTopFrame() {
@@ -257,7 +263,12 @@ void processLoop(BBPathInfo *loopheadBB) {
 
 
 void processBB(uint64_t bbhead) {
-    stack.adjustCallStack(bbhead);
+    if (bbhead == 0) {
+        std::cerr << "Bad record." << endl;
+        return;
+    }
+    if (!stack.adjustCallStack(bbhead))
+        return;
 
     if (stack.callStack.empty()) {
         // Before the dynamic linker (e.g. ld-linux.so) set up everything, we may encounter situation when
