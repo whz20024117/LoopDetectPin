@@ -17,7 +17,9 @@ struct BBInfo {
 };
 
 
-FILE * savefilefds[250]; // Max 250 threads.
+FILE * bbdumpfd;
+PIN_MUTEX *SAVEMTX; 
+FILE * recordfds[250]; // Max 250 threads.
 uint32_t threadcount = 0;
 
 void dump_bbinfo(FILE * fd, BBInfo *bbinfo) {
@@ -45,11 +47,10 @@ void dump_bbpath(FILE * fd, BBPathInfo *bpi) {
 void recordBB(ADDRINT bbhead, THREADID threadIndex) {
     BBPathInfo bb;
     bb.head = bbhead;
-    dump_bbpath(savefilefds[threadIndex], &bb);
+    dump_bbpath(recordfds[threadIndex], &bb);
 }
 
 void LoopDetectRecord(TRACE trace, VOID *v) {
-    THREADID threadIndex = PIN_ThreadId();
     
     for (BBL bbl = TRACE_BblHead(trace); BBL_Valid(bbl); bbl = BBL_Next(bbl)) {
 
@@ -79,18 +80,21 @@ void LoopDetectRecord(TRACE trace, VOID *v) {
                 break;
             }  
         }
-        dump_bbinfo(savefilefds[threadIndex], &bbinfo);
+        PIN_MutexLock(SAVEMTX);
+        dump_bbinfo(bbdumpfd, &bbinfo);
+        PIN_MutexUnlock(SAVEMTX);
     }
 }
 
 VOID Fini(INT32 code, VOID *v) {
-    
+    fflush(bbdumpfd);
+    fclose(bbdumpfd);
 }
 
 VOID ThreadFini(THREADID threadIndex, const CONTEXT *ctxt, INT32 code, VOID *v) {
-    fflush(savefilefds[threadIndex]);
-    fclose(savefilefds[threadIndex]);
-    fprintf(stderr, "Trace Dump for thread %d finished; \n", threadIndex);
+    fflush(recordfds[threadIndex]);
+    fclose(recordfds[threadIndex]);
+    // fprintf(stderr, "Trace Dump for thread %d finished; \n", threadIndex);
 }
 
 VOID ThreadStart(THREADID threadIndex, CONTEXT* ctxt, INT32 flags, VOID* v) {
@@ -101,7 +105,7 @@ VOID ThreadStart(THREADID threadIndex, CONTEXT* ctxt, INT32 flags, VOID* v) {
     }
     char filename[250];
     sprintf(filename, "record%d.txt", threadcount++);
-    savefilefds[threadIndex] = fopen(filename, "w");
+    recordfds[threadIndex] = fopen(filename, "w");
 }
 
 int main(int argc, char * argv[]){
@@ -113,6 +117,12 @@ int main(int argc, char * argv[]){
         return 1;
     }
 
+    bbdumpfd = fopen("bbdump.txt", "w");
+    SAVEMTX = new LEVEL_BASE::PIN_MUTEX;
+    if (!PIN_MutexInit(SAVEMTX)) {
+        fprintf(stderr, "Mutex Init failed.\n");
+        PIN_ExitProcess(-1);
+    }
 
     // Register ThreadStart to be called when a thread starts.
     PIN_AddThreadStartFunction(ThreadStart, NULL);

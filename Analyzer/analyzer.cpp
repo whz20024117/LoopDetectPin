@@ -375,12 +375,13 @@ void load_record(std::string record_filename) {
 
 
 int main(int argc, char * argv[]){
-    if (argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " " << "<loop detecct record file>" << endl;
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " " << "<bbdump file> " << "<record file>" << endl;
         exit(1);
     }
 
     load_record(argv[1]);
+    load_record(argv[2]);
 
     for (auto bpi : bbpath_buffer) {
         // std::cerr << "Process BB: 0x" << std::hex << bpi->head << std::endl;
