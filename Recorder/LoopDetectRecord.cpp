@@ -17,59 +17,43 @@ struct BBInfo {
 };
 
 
-FILE * fd;
+FILE * savefilefds[250]; // Max 250 threads.
+uint32_t threadcount = 0;
 
-BBInfo *basicBlockInfos = nullptr;
-size_t bbis_size = 0;
-size_t bbis_capacity = 0;
-BBPathInfo *BBdumps = nullptr;
-size_t bbds_size = 0;
-size_t bbds_capacity = 0;
+void dump_bbinfo(FILE * fd, BBInfo *bbinfo) {
+    fprintf(fd, "%d\n", 0); // 0 for BBinfo
+    fprintf(
+        fd, "%lx,%d,%d,%lx,",
+        bbinfo->head,
+        bbinfo->contains_call,
+        bbinfo->contains_ret,
+        bbinfo->retaddr
+    ); // First 4 members, n_ins need not to be recorded
 
-// Utility functions for saving data.
-void append_bbis(BBInfo bbi) {
-    if (bbis_capacity == bbis_size) {
-        size_t new_capacity = bbis_capacity + bbis_capacity / 2;
-        BBInfo *new_basicBlockInfos = new BBInfo[new_capacity];
-
-        for (size_t i=0; i < bbis_size; i++) {
-            new_basicBlockInfos[i] = basicBlockInfos[i];
-        }
-        delete[] basicBlockInfos;
-        basicBlockInfos = new_basicBlockInfos;
-        bbis_capacity = new_capacity;
+    // Instruction addrs
+    for (size_t j=0; j < bbinfo->n_ins; j++) {
+        fprintf(fd, "%lx,", bbinfo->instructions[j]);
     }
-
-    basicBlockInfos[bbis_size++] = bbi;
+    fprintf(fd, "\n");
 }
 
-void append_bbds(BBPathInfo bbd) {
-    if (bbds_capacity == bbds_size) {
-        size_t new_capacity = bbds_capacity + bbds_capacity / 2;
-        BBPathInfo *new_BBdumps = new BBPathInfo[new_capacity];
-        
-        for (size_t i=0; i < bbds_size; i++) {
-            new_BBdumps[i] = BBdumps[i];
-        }
-        delete[] BBdumps;
-        BBdumps = new_BBdumps;
-        bbds_capacity = new_capacity;
-    }
-
-    BBdumps[bbds_size++] = bbd;
+void dump_bbpath(FILE * fd, BBPathInfo *bpi) {
+    fprintf(fd, "%d\n", 1); // 1 for BBPathinfo
+    fprintf(fd, "%lx,\n", bpi->head); // First for members
 }
 
-void recordBB(ADDRINT bbhead) {
+void recordBB(ADDRINT bbhead, THREADID threadIndex) {
     BBPathInfo bb;
     bb.head = bbhead;
-    append_bbds(bb);
+    dump_bbpath(savefilefds[threadIndex], &bb);
 }
 
 void LoopDetectRecord(TRACE trace, VOID *v) {
+    THREADID threadIndex = PIN_ThreadId();
     
     for (BBL bbl = TRACE_BblHead(trace); BBL_Valid(bbl); bbl = BBL_Next(bbl)) {
 
-        BBL_InsertCall(bbl, IPOINT_BEFORE, (AFUNPTR) recordBB, IARG_ADDRINT, BBL_Address(bbl), IARG_END);
+        BBL_InsertCall(bbl, IPOINT_BEFORE, (AFUNPTR) recordBB, IARG_ADDRINT, BBL_Address(bbl), IARG_THREAD_ID, IARG_END);
         BBInfo bbinfo = BBInfo();
         bbinfo.head = BBL_Address(bbl);
 
@@ -95,35 +79,7 @@ void LoopDetectRecord(TRACE trace, VOID *v) {
                 break;
             }  
         }
-        append_bbis(bbinfo);
-    }
-}
-
-void dump_bbinfo() {
-    fprintf(stdout, "Total bbinfo size: %lu\n", bbis_size);
-    for (size_t i=0; i < bbis_size; i++) {
-        fprintf(fd, "%d\n", 0); // 0 for BBinfo
-        fprintf(
-            fd, "%lx,%d,%d,%lx,",
-            basicBlockInfos[i].head,
-            basicBlockInfos[i].contains_call,
-            basicBlockInfos[i].contains_ret,
-            basicBlockInfos[i].retaddr
-        ); // First 4 members, n_ins need not to be recorded
-
-        // Instruction addrs
-        for (size_t j=0; j < basicBlockInfos[i].n_ins; j++) {
-            fprintf(fd, "%lx,", basicBlockInfos[i].instructions[j]);
-        }
-        fprintf(fd, "\n");
-    }
-}
-
-void dump_bbpath() {
-    fprintf(stdout, "Total bbpath size: %lu\n", bbds_size);
-    for (size_t i=0; i < bbds_size; i++) {
-        fprintf(fd, "%d\n", 1); // 1 for BBPathinfo
-        fprintf(fd, "%lx,\n", BBdumps[i].head); // First for members
+        dump_bbinfo(savefilefds[threadIndex], &bbinfo);
     }
 }
 
@@ -132,9 +88,20 @@ VOID Fini(INT32 code, VOID *v) {
 }
 
 VOID ThreadFini(THREADID threadIndex, const CONTEXT *ctxt, INT32 code, VOID *v) {
-    dump_bbinfo();
-    dump_bbpath();
-    fprintf(stdout, "Trace Dump finished; \n");
+    fflush(savefilefds[threadIndex]);
+    fclose(savefilefds[threadIndex]);
+    fprintf(stderr, "Trace Dump for thread %d finished; \n", threadIndex);
+}
+
+VOID ThreadStart(THREADID threadIndex, CONTEXT* ctxt, INT32 flags, VOID* v) {
+    fprintf(stderr, "Thread %d started.\n", threadIndex);
+    if (!(threadcount < 250)) {
+        fprintf(stderr, "Max number of thread reached. Exiting...\n");
+        PIN_ExitProcess(-1);
+    }
+    char filename[250];
+    sprintf(filename, "record%d.txt", threadcount++);
+    savefilefds[threadIndex] = fopen(filename, "w");
 }
 
 int main(int argc, char * argv[]){
@@ -146,18 +113,9 @@ int main(int argc, char * argv[]){
         return 1;
     }
 
-    // Buffer init
-    basicBlockInfos = new BBInfo[500];
-    bbis_capacity = 500;
-    BBdumps = new BBPathInfo[5000];
-    bbds_capacity = 5000;
-
-
-    // Open file
-    fd = fopen("loop_detect_record.txt", "w");
 
     // Register ThreadStart to be called when a thread starts.
-    // PIN_AddThreadStartFunction(ThreadStart, NULL);
+    PIN_AddThreadStartFunction(ThreadStart, NULL);
 
     // Register Fini to be called when thread exits.
     PIN_AddThreadFiniFunction(ThreadFini, NULL);
